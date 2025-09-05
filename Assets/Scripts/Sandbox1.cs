@@ -9,7 +9,7 @@ public class Sandbox1 : MonoBehaviour
 {
     public GameObject canvasPrefab;
     public GameObject attachmentPrefab;
-    public ObiRope rope;
+    public ObiRopeBase rope;
     public ObiRopeCursor ropeCursor;
     [Range(-1, 1)] public float changeLength;
 

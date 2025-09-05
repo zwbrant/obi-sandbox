@@ -147,7 +147,30 @@ public class Sandbox2 : MonoBehaviour
     {
         // Reset previous eyelet particle
         if (_leadInElementIndex is not -1)
-            rope.CopyParticle(rope.elements[_leadInElementIndex].particle1, rope.elements[_leadInElementIndex].particle2);
+        {
+            int sourceParticle = element > _leadInElementIndex ? rope.elements[_leadInElementIndex].particle1 : rope.elements[_leadInElementIndex + 1].particle2;
+            int oldEyeletParticle = rope.elements[_leadInElementIndex].particle2;
+            
+            // Copy solver data:
+            // Solver.prevPositions[oldEyeletParticle] = Solver.prevPositions[sourceParticle];
+            // Solver.restPositions[oldEyeletParticle] = Solver.restPositions[sourceParticle];
+            // Solver.endPositions[oldEyeletParticle] = Solver.endPositions[sourceParticle];
+            // Solver.startPositions[oldEyeletParticle] =  Solver.startPositions[sourceParticle];
+            // Solver.positions[oldEyeletParticle] = Solver.positions[sourceParticle];
+
+            Solver.prevOrientations[oldEyeletParticle] = Solver.prevOrientations[sourceParticle];
+            Solver.restOrientations[oldEyeletParticle] = Solver.restOrientations[sourceParticle];
+            Solver.endOrientations[oldEyeletParticle] = Solver.startOrientations[oldEyeletParticle] = Solver.orientations[oldEyeletParticle] = Solver.orientations[sourceParticle];
+
+            Solver.velocities[oldEyeletParticle] = Solver.velocities[sourceParticle];
+            Solver.angularVelocities[oldEyeletParticle] = Solver.angularVelocities[sourceParticle];
+            Solver.invMasses[oldEyeletParticle] = Solver.invMasses[sourceParticle];
+            Solver.invRotationalMasses[oldEyeletParticle] = Solver.invRotationalMasses[sourceParticle];
+            Solver.principalRadii[oldEyeletParticle] = Solver.principalRadii[sourceParticle];
+            Solver.phases[oldEyeletParticle] = Solver.phases[sourceParticle];
+            Solver.filters[oldEyeletParticle] = Solver.filters[sourceParticle];
+            Solver.colors[oldEyeletParticle] = Solver.colors[sourceParticle];
+        }
         
         // Set eyelet particle to be static
         Solver.invMasses[rope.elements[element].particle2] = 0;
@@ -155,7 +178,7 @@ public class Sandbox2 : MonoBehaviour
         
         rope.UpdateParticleProperties();
         _leadInElementIndex = element;
-        print($"Lead In Element: {element}");
+        // print($"Lead In Element: {element}");
     }
 
     private void OnDrawGizmos()
