@@ -16,59 +16,79 @@ public class Sandbox2 : MonoBehaviour
     /// <summary>
     /// The element leading into the eyelet; i.e., its second particle will be the actual eyelet
     /// </summary>
-    private int _preEyeletElement = -1;
+    private int _leadInElementIndex = -1;
 
-    private float _preEyeletElementLengthDelta;
+    private float _leadInElementStretch, _leadOutElementStretch;
 
     private void OnEnable()
     {
+        rope.OnElementsGenerated += RopeOnOnElementsGenerated;
         rope.OnSubstepsStart += RopeOnOnSubstepsStart;
         rope.OnSimulationStart += RopeOnOnSimulationStart;
-        
-    }
-    
-    private void OnDisable()
-    {
-        rope.OnSubstepsStart -= RopeOnOnSubstepsStart;
-        rope.OnSimulationStart -= RopeOnOnSimulationStart;
+        rope.OnSubstepsStart += RopeOnOnSubstepsStart;
     }
 
-    private IEnumerator Start()
+    private void RopeOnOnElementsGenerated(ObiActor actor)
     {
-        while (true)
-        {
-            if (rope.isLoaded || Time.time > 3f)
-            {
-                CreateEyeletElement();
-                yield break;
-            }
-            yield return null;
-        }
+        CreateEyeletElement();
+    }
+
+
+    private void OnDisable()
+    {
+        rope.OnElementsGenerated -= RopeOnOnElementsGenerated;
+        rope.OnSubstepsStart -= RopeOnOnSubstepsStart;
+        rope.OnSimulationStart -= RopeOnOnSimulationStart;
+        rope.OnSubstepsStart -= RopeOnOnSubstepsStart;
+    }
+
+    // private IEnumerator Start()
+    // {
+    //     while (true)
+    //     {
+    //         if (rope.isLoaded || Time.time > 3f)
+    //         {
+    //             CreateEyeletElement();
+    //             yield break;
+    //         }
+    //         yield return null;
+    //     }
+    // }
+    
+    private void RopeOnOnSubstepsStart(ObiActor actor, float simulatedTime, float substepTime)
+    {
+
     }
     
     private void RopeOnOnSimulationStart(ObiActor actor, float simulatedTime, float substepTime)
     {
-        
         LockEyeletPosition();
-        
         UpdateEyeletConstraint();
-    }
-    
-    private void RopeOnOnSubstepsStart(ObiActor actor, float simulatedTime, float substepTime)
-    {
-        
     }
 
     private void UpdateEyeletConstraint()
     {
-        if (_preEyeletElement is -1)
+        if (_leadInElementIndex is -1)
             return;
+        
+        var leadInElement = rope.elements[_leadInElementIndex];
+        var leadOutElement = rope.elements[_leadInElementIndex + 1];
 
-        var preEyeletDelta = Vector3.Distance(Solver.positions[rope.elements[_preEyeletElement].particle1], Solver.positions[rope.elements[_preEyeletElement].particle2]);
-        _preEyeletElementLengthDelta = preEyeletDelta - rope.elements[_preEyeletElement].restLength;
+        _leadInElementStretch = Vector3.Distance(Solver.positions[leadInElement.particle1], Solver.positions[leadInElement.particle2]);
+        _leadInElementStretch -= leadInElement.restLength;
+        
+        _leadOutElementStretch = Vector3.Distance(Solver.positions[leadOutElement.particle1], Solver.positions[leadOutElement.particle2]);
+        _leadOutElementStretch -= leadOutElement.restLength;
+        
+        var stretchDelta = _leadInElementStretch - _leadOutElementStretch;
 
-        rope.elements[_preEyeletElement].restLength = Mathf.Max(0f,rope.elements[_preEyeletElement].restLength + Mathf.Min(_preEyeletElementLengthDelta * speediness, rope.elements[_preEyeletElement + 1].restLength));
-        rope.elements[_preEyeletElement + 1].restLength = Mathf.Max(0f, rope.elements[_preEyeletElement + 1].restLength - Mathf.Min(_preEyeletElementLengthDelta * speediness, rope.elements[_preEyeletElement].restLength));
+        leadInElement.restLength = Mathf.Max(0f, leadInElement.restLength + Mathf.Min(stretchDelta * speediness, leadOutElement.restLength));
+        leadOutElement.restLength = Mathf.Max(0f, leadOutElement.restLength - Mathf.Max(stretchDelta * speediness, -leadInElement.restLength));
+
+        if (leadOutElement.restLength < MathUtils.ScalarEpsilon && _leadInElementIndex < rope.elements.Count - 2)
+            SetLeadInElement(_leadInElementIndex + 1);
+        else if (leadInElement.restLength < MathUtils.ScalarEpsilon && _leadInElementIndex > 0)
+            SetLeadInElement(_leadInElementIndex - 1);
         
         rope.RecalculateRestLength();
         rope.RecalculateRestPositions();
@@ -77,10 +97,10 @@ public class Sandbox2 : MonoBehaviour
 
     private void LockEyeletPosition()
     {
-        if (_preEyeletElement is -1)
+        if (_leadInElementIndex is -1)
             return;
 
-        var eyeletParticle = rope.elements[_preEyeletElement].particle2;
+        var eyeletParticle = rope.elements[_leadInElementIndex].particle2;
 
         Solver.invMasses[eyeletParticle] = 0f;
         Solver.velocities[eyeletParticle] = Vector3.zero;
@@ -91,7 +111,7 @@ public class Sandbox2 : MonoBehaviour
 
     private void CreateEyeletElement()
     {
-        if (startElement is -1 || startElement >= rope.elements.Count)
+        if (startElement is -1 || startElement >= rope.elements.Count - 1)
             return;
         
         // Duplicate particle traits to new one
@@ -120,26 +140,28 @@ public class Sandbox2 : MonoBehaviour
         rope.RecalculateRestLength();
         rope.RebuildConstraintsFromElements();
 
-        SetPreEyeletElement(startElement);
+        SetLeadInElement(startElement);
     }
 
-    private void SetPreEyeletElement(int element)
+    private void SetLeadInElement(int element)
     {
         // Reset previous eyelet particle
-        if (_preEyeletElement is not -1)
-            rope.CopyParticle(rope.elements[_preEyeletElement].particle1, rope.elements[_preEyeletElement].particle2);
+        if (_leadInElementIndex is not -1)
+            rope.CopyParticle(rope.elements[_leadInElementIndex].particle1, rope.elements[_leadInElementIndex].particle2);
         
         // Set eyelet particle to be static
         Solver.invMasses[rope.elements[element].particle2] = 0;
+        Solver.velocities[rope.elements[element].particle2] = Vector4.zero;
         
         rope.UpdateParticleProperties();
-        _preEyeletElement = element;
+        _leadInElementIndex = element;
+        print($"Lead In Element: {element}");
     }
 
     private void OnDrawGizmos()
     {
         Gizmos.color = Color.cyan;
-        Gizmos.DrawWireSphere(transform.position, 0.2f);
+        Gizmos.DrawWireSphere(transform.position, 0.11f);
         
         if (!Application.isPlaying)
             return;
@@ -147,9 +169,7 @@ public class Sandbox2 : MonoBehaviour
     
     private void OnGUI()
     {
-
-        
-        string labelText = $"PreEyelet Length: {_preEyeletElementLengthDelta.Round(4)}";
+        string labelText = $"Lead-in Element Stretch: {_leadInElementStretch.Round(4)}";
         GUIStyle style = new GUIStyle(GUI.skin.label)
         {
             alignment = TextAnchor.MiddleCenter,
@@ -160,10 +180,15 @@ public class Sandbox2 : MonoBehaviour
         Vector2 size = style.CalcSize(new GUIContent(labelText));
         size.y *= 3f;
 
-        // Position it at bottom center
         float x = (Screen.width - size.x) / 5f;
         float y = Screen.height - size.y - 10f; // 10px margin from bottom
 
+        GUI.Label(new Rect(x, y, size.x, size.y), labelText, style);
+        
+        labelText = $"Lead-out Element Stretch: {_leadOutElementStretch.Round(4)}";
+        x = (Screen.width - size.x) * .8f;
+        
+        
         GUI.Label(new Rect(x, y, size.x, size.y), labelText, style);
     }
 }
